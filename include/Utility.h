@@ -25,13 +25,13 @@ namespace httplib
 		// https://stackoverflow.com/questions/180947/base64-decode-snippet-in-c
 		std::string base64_encode(const std::string& in);
 
-		bool is_file(std::string_view path);
+		bool is_file(const std::string& path);
 
-		bool is_dir(std::string_view path);
+		bool is_dir(const std::string& path);
 
-		bool is_valid_path(std::string_view path);
+		bool is_valid_path(const std::string& path);
 
-		void read_file(std::string_view path, std::string& out);
+		void read_file(const std::string& path, std::string& out);
 
 		std::string file_extension(const std::string& path);
 
@@ -98,7 +98,7 @@ namespace httplib
 			bool is_readable() const override;
 			bool is_writable() const override;
 			ssize_t read(char* ptr, size_t size) override;
-			ssize_t write(std::string_view) override;
+			ssize_t write(const char* ptr, size_t size) override;
 			void get_remote_ip_and_port(std::string& ip, int& port) const override;
 
 		private:
@@ -117,7 +117,7 @@ namespace httplib
 			bool is_readable() const override;
 			bool is_writable() const override;
 			ssize_t read(char* ptr, size_t size) override;
-			ssize_t write(std::string_view) override;
+			ssize_t write(const char* ptr, size_t size) override;
 			void get_remote_ip_and_port(std::string& ip, int& port) const override;
 
 		private:
@@ -137,7 +137,7 @@ namespace httplib
 			bool is_readable() const override;
 			bool is_writable() const override;
 			ssize_t read(char* ptr, size_t size) override;
-			ssize_t write(std::string_view s) override;
+			ssize_t write(const char* ptr, size_t size) override;
 			void get_remote_ip_and_port(std::string& ip, int& port) const override;
 
 			const std::string& get_buffer() const;
@@ -150,7 +150,7 @@ namespace httplib
 		int shutdown_socket(socket_t sock);
 
 		template <typename Fn>
-		socket_t create_socket(std::string_view host, int port, Fn fn, int socket_flags = 0)
+		socket_t create_socket(const char* host, int port, Fn fn, int socket_flags = 0)
 		{
 			// Get address info
 			struct addrinfo hints;
@@ -164,7 +164,7 @@ namespace httplib
 
 			auto service = std::to_string(port);
 
-			if (getaddrinfo(host.data(), service.c_str(), &hints, &result))
+			if (getaddrinfo(host, service.c_str(), &hints, &result))
 			{
 				return INVALID_SOCKET;
 			}
@@ -309,11 +309,11 @@ namespace httplib
 		};
 #endif
 
-		bool has_header(const Headers& headers, std::string_view key);
+		bool has_header(const Headers& headers, const char* key);
 
-		const char* get_header_value(const Headers& headers, std::string_view key, size_t id = 0, std::string_view def = "");
+		const char* get_header_value(const Headers& headers, const char* key, size_t id = 0, const char* def = nullptr);
 
-		uint64_t get_header_value_uint64(const Headers& headers, std::string_view key, uint64_t def = 0);
+		uint64_t get_header_value_uint64(const Headers& headers, const char* key, uint64_t def = 0);
 
 		void parse_header(const char* beg, const char* end, Headers& headers);
 
@@ -333,9 +333,9 @@ namespace httplib
 		bool read_content(Stream& strm, T& x, size_t payload_max_length, int& status, Progress progress, ContentReceiver receiver, bool decompress)
 		{
 
-			ContentReceiver out = [&](std::string_view s)
+			ContentReceiver out = [&](const char* buf, size_t n)
 			{
-				return receiver(s);
+				return receiver(buf, n);
 			};
 
 #ifdef CPPHTTPLIB_ZLIB_SUPPORT
@@ -355,11 +355,11 @@ namespace httplib
 						return false;
 					}
 
-					out = [&](std::string_view s)
+					out = [&](const char* buf, size_t n)
 					{
-						return decompressor.decompress(s.data(), s.size(), [&](const char* buf, size_t n)
+						return decompressor.decompress(buf, n, [&](const char* buf, size_t n)
 							{
-								return receiver(std::string_view(buf, n));
+								return receiver(buf, n);
 							});
 					};
 				}
@@ -443,7 +443,7 @@ namespace httplib
 			return write_len;
 		}
 
-		bool write_data(Stream& strm, std::string_view);
+		bool write_data(Stream& strm, const char* d, size_t l);
 
 		ssize_t write_content(Stream& strm, ContentProvider content_provider, size_t offset, size_t length);
 
@@ -472,7 +472,7 @@ namespace httplib
 			bool is_valid() const;
 
 			template <typename T, typename U>
-			bool parse(std::string_view s, T content_callback, U header_callback)
+			bool parse(const char* buf, size_t n, T content_callback, U header_callback)
 			{
 				static const std::regex re_content_type(R"(^Content-Type:\s*(.*?)\s*$)",
 					std::regex_constants::icase);
@@ -484,7 +484,7 @@ namespace httplib
 				static const std::string dash_ = "--";
 				static const std::string crlf_ = "\r\n";
 
-				buf_.append(s.data(), s.size()); // TODO: performance improvement
+				buf_.append(buf, n); // TODO: performance improvement
 
 				while (!buf_.empty())
 				{
@@ -568,7 +568,7 @@ namespace httplib
 							{
 								pos = buf_.size();
 							}
-							if (!content_callback(std::string_view(buf_.data(), pos)))
+							if (!content_callback(buf_.data(), pos))
 							{
 								is_valid_ = false;
 								is_done_ = false;
@@ -589,7 +589,7 @@ namespace httplib
 							auto pos = buf_.find(pattern);
 							if (pos != std::string::npos)
 							{
-								if (!content_callback(std::string_view(buf_.data(), pos)))
+								if (!content_callback(buf_.data(), pos))
 								{
 									is_valid_ = false;
 									is_done_ = false;
@@ -602,7 +602,7 @@ namespace httplib
 							}
 							else
 							{
-								if (!content_callback(std::string_view(buf_.data(), pattern.size())))
+								if (!content_callback(buf_.data(), pattern.size()))
 								{
 									is_valid_ = false;
 									is_done_ = false;
@@ -728,7 +728,7 @@ namespace httplib
 
 		bool expect_content(const Request& req);
 
-		bool has_crlf(std::string_view s);
+		bool has_crlf(const char* s);
 
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
 		template <typename CTX, typename Init, typename Update, typename Final>

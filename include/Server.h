@@ -79,7 +79,7 @@ namespace httplib
 			NextStep p_SendResponseBody();
 			NextStep p_SendResponseBodyWithProvider(std::shared_ptr<Connection> self);
 
-			NextStep m_NextStep = NextStep::AcceptRequest;
+			NextStep m_NextStep = NextStep::ProcessRequest;
 
 			Server& m_Server;
 			std::unique_ptr<Stream> m_Stream;
@@ -106,20 +106,21 @@ namespace httplib
 
 		virtual bool is_valid() const;
 
-		CPPHTTPLIBEXPORT Server& Get(std::string_view pattern, Handler handler);
-		CPPHTTPLIBEXPORT Server& Post(std::string_view pattern, Handler handler);
-		CPPHTTPLIBEXPORT Server& Post(std::string_view pattern, HandlerWithContentReader handler);
-		CPPHTTPLIBEXPORT Server& Put(std::string_view pattern, Handler handler);
-		CPPHTTPLIBEXPORT Server& Put(std::string_view pattern, HandlerWithContentReader handler);
-		CPPHTTPLIBEXPORT Server& Patch(std::string_view pattern, Handler handler);
-		CPPHTTPLIBEXPORT Server& Patch(std::string_view pattern, HandlerWithContentReader handler);
-		CPPHTTPLIBEXPORT Server& Delete(std::string_view pattern, Handler handler);
-		CPPHTTPLIBEXPORT Server& Delete(std::string_view pattern, HandlerWithContentReader handler);
-		CPPHTTPLIBEXPORT Server& Options(std::string_view pattern, Handler handler);
+		CPPHTTPLIBEXPORT Server& Get(const char* pattern, Handler handler);
+		CPPHTTPLIBEXPORT Server& Post(const char* pattern, Handler handler);
+		CPPHTTPLIBEXPORT Server& Post(const char* pattern, HandlerWithContentReader handler);
+		CPPHTTPLIBEXPORT Server& Put(const char* pattern, Handler handler);
+		CPPHTTPLIBEXPORT Server& Put(const char* pattern, HandlerWithContentReader handler);
+		CPPHTTPLIBEXPORT Server& Patch(const char* pattern, Handler handler);
+		CPPHTTPLIBEXPORT Server& Patch(const char* pattern, HandlerWithContentReader handler);
+		CPPHTTPLIBEXPORT Server& Delete(const char* pattern, Handler handler);
+		CPPHTTPLIBEXPORT Server& Delete(const char* pattern, HandlerWithContentReader handler);
+		CPPHTTPLIBEXPORT Server& Options(const char* pattern, Handler handler);
 
-		CPPHTTPLIBEXPORT bool set_mount_point(std::string_view mount_point, std::string_view dir);
-		CPPHTTPLIBEXPORT bool remove_mount_point(std::string_view mount_point);
-		CPPHTTPLIBEXPORT void set_file_extension_and_mimetype_mapping(std::string_view ext, std::string_view mime);
+		CPPHTTPLIBEXPORT [[deprecated]] bool set_base_dir(const char* dir, const char* mount_point = nullptr);
+		CPPHTTPLIBEXPORT bool set_mount_point(const char* mount_point, const char* dir);
+		CPPHTTPLIBEXPORT bool remove_mount_point(const char* mount_point);
+		CPPHTTPLIBEXPORT void set_file_extension_and_mimetype_mapping(const char* ext, const char* mime);
 		CPPHTTPLIBEXPORT void set_file_request_handler(Handler handler);
 
 		CPPHTTPLIBEXPORT void set_error_handler(Handler handler);
@@ -134,11 +135,11 @@ namespace httplib
 
 		CPPHTTPLIBEXPORT void set_payload_max_length(size_t length);
 
-		CPPHTTPLIBEXPORT bool bind_to_port(std::string_view host, int port, int socket_flags = 0);
-		CPPHTTPLIBEXPORT int bind_to_any_port(std::string_view host, int socket_flags = 0);
+		CPPHTTPLIBEXPORT bool bind_to_port(const char* host, int port, int socket_flags = 0);
+		CPPHTTPLIBEXPORT int bind_to_any_port(const char* host, int socket_flags = 0);
 		CPPHTTPLIBEXPORT bool listen_after_bind();
 
-		CPPHTTPLIBEXPORT bool listen(std::string_view host, int port, int socket_flags = 0);
+		CPPHTTPLIBEXPORT bool listen(const char* host, int port, int socket_flags = 0);
 
 		CPPHTTPLIBEXPORT bool is_running() const;
 		CPPHTTPLIBEXPORT void stop();
@@ -146,7 +147,7 @@ namespace httplib
 		virtual std::unique_ptr<TaskQueue> new_task_queue(std::unique_ptr<TaskQueue> queue = nullptr);
 
 	protected:
-		bool process_request(Stream& strm, Request& req, Response& res, std::shared_ptr<Connection> connection, bool& connection_close, const std::function<void(Request&)>& setup_request);
+		bool process_request(Stream& strm, Request& req, Response& res, std::shared_ptr<Connection> connection, bool last_connection, bool& connection_close, const std::function<void(Request&)>& setup_request);
 
 		Config m_Config;
 
@@ -154,8 +155,8 @@ namespace httplib
 		using Handlers = std::vector<std::pair<std::regex, Handler>>;
 		using HandlersForContentReader = std::vector<std::pair<std::regex, HandlerWithContentReader>>;
 
-		socket_t create_server_socket(std::string_view host, int port, int socket_flags) const;
-		int bind_internal(std::string_view host, int port, int socket_flags);
+		socket_t create_server_socket(const char* host, int port, int socket_flags) const;
+		int bind_internal(const char* host, int port, int socket_flags);
 		bool listen_internal();
 
 		bool routing(Request& req, Response& res, std::shared_ptr<Connection> connection, Stream& strm);

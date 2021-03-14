@@ -22,71 +22,76 @@ namespace httplib
 	{
 	}
 
-	Server& Server::Get(std::string_view pattern, Handler handler)
+	Server& Server::Get(const char* pattern, Handler handler)
 	{
-		get_handlers_.push_back(std::make_pair(std::regex(pattern.data()), handler));
+		get_handlers_.push_back(std::make_pair(std::regex(pattern), handler));
 		return *this;
 	}
 
-	Server& Server::Post(std::string_view pattern, Handler handler)
+	Server& Server::Post(const char* pattern, Handler handler)
 	{
-		post_handlers_.push_back(std::make_pair(std::regex(pattern.data()), handler));
+		post_handlers_.push_back(std::make_pair(std::regex(pattern), handler));
 		return *this;
 	}
 
-	Server& Server::Post(std::string_view pattern, HandlerWithContentReader handler)
+	Server& Server::Post(const char* pattern, HandlerWithContentReader handler)
 	{
-		post_handlers_for_content_reader_.push_back(std::make_pair(std::regex(pattern.data()), handler));
+		post_handlers_for_content_reader_.push_back(std::make_pair(std::regex(pattern), handler));
 		return *this;
 	}
 
-	Server& Server::Put(std::string_view pattern, Handler handler)
+	Server& Server::Put(const char* pattern, Handler handler)
 	{
-		put_handlers_.push_back(std::make_pair(std::regex(pattern.data()), handler));
+		put_handlers_.push_back(std::make_pair(std::regex(pattern), handler));
 		return *this;
 	}
 
-	Server& Server::Put(std::string_view pattern, HandlerWithContentReader handler)
+	Server& Server::Put(const char* pattern, HandlerWithContentReader handler)
 	{
-		put_handlers_for_content_reader_.push_back(std::make_pair(std::regex(pattern.data()), handler));
+		put_handlers_for_content_reader_.push_back(std::make_pair(std::regex(pattern), handler));
 		return *this;
 	}
 
-	Server& Server::Patch(std::string_view pattern, Handler handler)
+	Server& Server::Patch(const char* pattern, Handler handler)
 	{
-		patch_handlers_.push_back(std::make_pair(std::regex(pattern.data()), handler));
+		patch_handlers_.push_back(std::make_pair(std::regex(pattern), handler));
 		return *this;
 	}
 
-	Server& Server::Patch(std::string_view pattern, HandlerWithContentReader handler)
+	Server& Server::Patch(const char* pattern, HandlerWithContentReader handler)
 	{
-		patch_handlers_for_content_reader_.push_back(std::make_pair(std::regex(pattern.data()), handler));
+		patch_handlers_for_content_reader_.push_back(std::make_pair(std::regex(pattern), handler));
 		return *this;
 	}
 
-	Server& Server::Delete(std::string_view pattern, Handler handler)
+	Server& Server::Delete(const char* pattern, Handler handler)
 	{
-		delete_handlers_.push_back(std::make_pair(std::regex(pattern.data()), handler));
+		delete_handlers_.push_back(std::make_pair(std::regex(pattern), handler));
 		return *this;
 	}
 
-	Server& Server::Delete(std::string_view pattern, HandlerWithContentReader handler)
+	Server& Server::Delete(const char* pattern, HandlerWithContentReader handler)
 	{
-		delete_handlers_for_content_reader_.push_back(std::make_pair(std::regex(pattern.data()), handler));
+		delete_handlers_for_content_reader_.push_back(std::make_pair(std::regex(pattern), handler));
 		return *this;
 	}
 
-	Server& Server::Options(std::string_view pattern, Handler handler)
+	Server& Server::Options(const char* pattern, Handler handler)
 	{
-		options_handlers_.push_back(std::make_pair(std::regex(pattern.data()), handler));
+		options_handlers_.push_back(std::make_pair(std::regex(pattern), handler));
 		return *this;
 	}
 
-	bool Server::set_mount_point(std::string_view mount_point, std::string_view dir)
+	bool Server::set_base_dir(const char* dir, const char* mount_point)
+	{
+		return set_mount_point(mount_point, dir);
+	}
+
+	bool Server::set_mount_point(const char* mount_point, const char* dir)
 	{
 		if (detail::is_dir(dir))
 		{
-			std::string_view mnt = !mount_point.empty() ? mount_point : "/";
+			std::string mnt = mount_point ? mount_point : "/";
 			if (!mnt.empty() && mnt[0] == '/')
 			{
 				base_dirs_.emplace_back(mnt, dir);
@@ -96,7 +101,7 @@ namespace httplib
 		return false;
 	}
 
-	bool Server::remove_mount_point(std::string_view mount_point)
+	bool Server::remove_mount_point(const char* mount_point)
 	{
 		for (auto it = base_dirs_.begin(); it != base_dirs_.end(); ++it)
 		{
@@ -109,9 +114,9 @@ namespace httplib
 		return false;
 	}
 
-	void Server::set_file_extension_and_mimetype_mapping(std::string_view ext, std::string_view mime)
+	void Server::set_file_extension_and_mimetype_mapping(const char* ext, const char* mime)
 	{
-		file_extension_and_mimetype_map_[ext.data()] = mime;
+		file_extension_and_mimetype_map_[ext] = mime;
 	}
 
 	void Server::set_file_request_handler(Handler handler)
@@ -159,12 +164,12 @@ namespace httplib
 		m_Config.PayloadMaxLength = length;
 	}
 
-	bool Server::bind_to_port(std::string_view host, int port, int socket_flags)
+	bool Server::bind_to_port(const char* host, int port, int socket_flags)
 	{
 		if (bind_internal(host, port, socket_flags) < 0) return false;
 		return true;
 	}
-	int Server::bind_to_any_port(std::string_view host, int socket_flags)
+	int Server::bind_to_any_port(const char* host, int socket_flags)
 	{
 		return bind_internal(host, 0, socket_flags);
 	}
@@ -174,7 +179,7 @@ namespace httplib
 		return listen_internal();
 	}
 
-	bool Server::listen(std::string_view host, int port, int socket_flags)
+	bool Server::listen(const char* host, int port, int socket_flags)
 	{
 		return bind_to_port(host, port, socket_flags) && listen_internal();
 	}
@@ -253,7 +258,7 @@ namespace httplib
 		}
 
 		if (!res.has_header("Content-Type") &&
-			(!res.body.empty() || res.GetContentLength() > 0))
+			(!res.body.empty() || res.content_length_ > 0))
 		{
 			res.set_header("Content-Type", "text/plain");
 		}
@@ -280,19 +285,19 @@ namespace httplib
 
 		if (res.body.empty())
 		{
-			if (res.GetContentLength() > 0)
+			if (res.content_length_ > 0)
 			{
 				size_t length = 0;
 				if (req.ranges.empty())
 				{
-					length = res.GetContentLength();
+					length = res.content_length_;
 				}
 				else if (req.ranges.size() == 1)
 				{
-					auto offsets = detail::get_range_offset_and_length(req, res.GetContentLength(), 0);
+					auto offsets = detail::get_range_offset_and_length(req, res.content_length_, 0);
 					auto offset = offsets.first;
 					length = offsets.second;
-					auto content_range = detail::make_content_range_header_field(offset, length, res.GetContentLength());
+					auto content_range = detail::make_content_range_header_field(offset, length, res.content_length_);
 					res.set_header("Content-Range", content_range);
 				}
 				else
@@ -303,7 +308,7 @@ namespace httplib
 			}
 			else
 			{
-				if (res.GetContentProvider())
+				if (res.content_provider_)
 				{
 					res.set_header("Transfer-Encoding", "chunked");
 				}
@@ -357,7 +362,7 @@ namespace httplib
 
 		// Flush buffer
 		auto& data = bstrm.get_buffer();
-		strm.write(data);
+		strm.write(data.data(), data.size());
 
 		return true;
 	}
@@ -365,34 +370,34 @@ namespace httplib
 	bool Server::read_content(Stream& strm, Request& req, Response& res)
 	{
 		MultipartFormDataMap::iterator cur;
-		if (read_content_core(strm, req, res,
-				// Regular
-				[&](std::string_view s)
+		if (read_content_core(
+			strm, req, res,
+			// Regular
+			[&](const char* buf, size_t n)
+			{
+				if (req.body.size() + n > req.body.max_size())
 				{
-					if (req.body.size() + s.size() > req.body.max_size())
-					{
-						return false;
-					}
-					req.body.append(s);
-					return true;
-				},
-				// Multipart
-					[&](const MultipartFormData& file)
+					return false;
+				}
+				req.body.append(buf, n);
+				return true;
+			},
+			// Multipart
+				[&](const MultipartFormData& file)
+			{
+				cur = req.files.emplace(file.name, file);
+				return true;
+			},
+				[&](const char* buf, size_t n)
+			{
+				auto& content = cur->second.content;
+				if (content.size() + n > content.max_size())
 				{
-					cur = req.files.emplace(file.name, file);
-					return true;
-				},
-					[&](std::string_view s)
-				{
-					auto& content = cur->second.content;
-					if (content.size() + s.size() > content.max_size())
-					{
-						return false;
-					}
-					content.append(s);
-					return true;
-				})
-			)
+					return false;
+				}
+				content.append(buf, n);
+				return true;
+			}))
 		{
 			const auto& content_type = req.get_header_value("Content-Type");
 			if (!content_type.find("application/x-www-form-urlencoded"))
@@ -401,7 +406,6 @@ namespace httplib
 			}
 			return true;
 		}
-		else
 			return false;
 	}
 
@@ -427,9 +431,9 @@ namespace httplib
 			}
 
 			multipart_form_data_parser.set_boundary(std::move(boundary));
-			out = [&](std::string_view s)
+			out = [&](const char* buf, size_t n)
 			{
-				return multipart_form_data_parser.parse(s, multipart_receiver, mulitpart_header);
+				return multipart_form_data_parser.parse(buf, n, multipart_receiver, mulitpart_header);
 			};
 		}
 		else
@@ -494,7 +498,7 @@ namespace httplib
 		return false;
 	}
 
-	socket_t Server::create_server_socket(std::string_view host, int port, int socket_flags) const
+	socket_t Server::create_server_socket(const char* host, int port, int socket_flags) const
 	{
 		return detail::create_socket(
 			host, port,
@@ -513,7 +517,7 @@ namespace httplib
 			socket_flags);
 	}
 
-	int Server::bind_internal(std::string_view host, int port, int socket_flags)
+	int Server::bind_internal(const char* host, int port, int socket_flags)
 	{
 		if (!is_valid())
 		{
@@ -752,7 +756,7 @@ namespace httplib
 		return false;
 	}
 
-	bool Server::process_request(Stream& strm, Request& req, Response& res, std::shared_ptr<Connection> connection, bool& connection_close, const std::function<void(Request&)>& setup_request)
+	bool Server::process_request(Stream& strm, Request& req, Response& res, std::shared_ptr<Connection> connection, bool last_connection, bool& connection_close, const std::function<void(Request&)>& setup_request)
 	{
 		std::array<char, 2048> buf{};
 
@@ -787,7 +791,8 @@ namespace httplib
 			connection_close = true;
 		}
 
-		if (req.version == "HTTP/1.0" && req.get_header_value("Connection") != "Keep-Alive")
+		if (req.version == "HTTP/1.0" &&
+			req.get_header_value("Connection") != "Keep-Alive")
 		{
 			connection_close = true;
 		}
@@ -947,9 +952,9 @@ namespace httplib
 
 			m_Request = Request();
 			m_Response = Response();
-			
+
 			if (m_ProcessCount > 0)
-				m_NextStep = NextStep::AcceptRequest;
+				m_NextStep = NextStep::ProcessRequest;
 			else
 				m_NextStep = NextStep::Quit;
 		}
@@ -972,17 +977,14 @@ namespace httplib
 			m_Stream = CreateStream();
 
 		bool connection_close = false;
-		if (!m_Server.process_request(*m_Stream, m_Request, m_Response, self, connection_close, m_SetupRequest))
+		if (!m_Server.process_request(*m_Stream, m_Request, m_Response, self, m_ProcessCount == 0, connection_close, m_SetupRequest) || connection_close)
 			return NextStep::Error;
-
-		if (connection_close)
-			m_ProcessCount = 0;
 
 		return NextStep::SendResponseHeader;
 	}
 	Server::Connection::NextStep Server::Connection::p_SendResponseHeader(std::shared_ptr<Connection> self)
 	{
-		if (!m_Server.write_response(*m_Stream, m_ProcessCount <= 0, m_Request, m_Response, self, m_Boundary, m_ContentType))
+		if (!m_Server.write_response(*m_Stream, m_ProcessCount == 0, m_Request, m_Response, self, m_Boundary, m_ContentType))
 			return Server::Connection::NextStep::Error;
 
 		return Server::Connection::NextStep::SendResponseBody;
@@ -993,10 +995,10 @@ namespace httplib
 		{
 			if (!m_Response.body.empty())
 			{
-				if (!m_Stream->write(m_Response.body))
+				if (!m_Stream->write(m_Response.body.data(), m_Response.body.size()))
 					return Server::Connection::NextStep::Error;
 			}
-			else if (m_Response.GetContentProvider())
+			else if (m_Response.content_provider_)
 				return Server::Connection::NextStep::SendResponseBodyWithProvider;
 		}
 
@@ -1004,21 +1006,21 @@ namespace httplib
 	}
 	Server::Connection::NextStep Server::Connection::p_SendResponseBodyWithProvider(std::shared_ptr<Connection> self)
 	{
-		if (m_Response.GetContentProvider())
+		if (m_Response.content_provider_)
 		{
-			if (m_Response.GetContentLength())
+			if (m_Response.content_length_)
 			{
 				if (m_Request.ranges.empty())
 				{
-					if (detail::write_content(*m_Stream, m_Response.GetContentProvider(), 0, m_Response.GetContentLength()) < 0)
+					if (detail::write_content(*m_Stream, m_Response.content_provider_, 0, m_Response.content_length_) < 0)
 						return Server::Connection::NextStep::Error;
 				}
 				else if (m_Request.ranges.size() == 1)
 				{
-					auto offsets = detail::get_range_offset_and_length(m_Request, m_Response.GetContentLength(), 0);
+					auto offsets = detail::get_range_offset_and_length(m_Request, m_Response.content_length_, 0);
 					auto offset = offsets.first;
 					auto length = offsets.second;
-					if (detail::write_content(*m_Stream, m_Response.GetContentProvider(), offset, length) < 0)
+					if (detail::write_content(*m_Stream, m_Response.content_provider_, offset, length) < 0)
 						return Server::Connection::NextStep::Error;
 				}
 				else
@@ -1029,7 +1031,7 @@ namespace httplib
 			}
 			else
 			{
-				if (!detail::write_content_chunked(*m_Stream, m_Response.GetContentProvider(), m_ChunkCounters))
+				if (!detail::write_content_chunked(*m_Stream, m_Response.content_provider_, m_ChunkCounters))
 					return Server::Connection::NextStep::Error;
 
 				if (m_ChunkCounters.data_available)

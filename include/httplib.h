@@ -181,17 +181,16 @@ namespace httplib
 	class DataSink
 	{
 	public:
-		CPPHTTPLIBEXPORT DataSink(std::function<void(std::string_view)> write, std::function<void()> done, std::function<bool()> is_writable);
+		CPPHTTPLIBEXPORT DataSink();
 
 		DataSink(const DataSink&) = delete;
 		DataSink& operator=(const DataSink&) = delete;
 		DataSink(DataSink&&) = delete;
 		DataSink& operator=(DataSink&&) = delete;
 
-		CPPHTTPLIBEXPORT void Write(std::string_view s);
-		CPPHTTPLIBEXPORT void Done();
-		CPPHTTPLIBEXPORT bool IsWritable();
-
+		std::function<void(const char* data, size_t data_len)> write;
+		std::function<void()> done;
+		std::function<bool()> is_writable;
 		std::ostream os;
 
 	private:
@@ -204,18 +203,15 @@ namespace httplib
 			CPPHTTPLIBEXPORT std::streamsize xsputn(const char* s, std::streamsize n);
 
 		private:
-			DataSink& m_Sink;
+			DataSink& sink_;
 		};
 
-		std::function<void(std::string_view)> m_Write;
-		std::function<void()> m_Done;
-		std::function<bool()> m_IsWritable;
-		data_sink_streambuf m_StreamBuf;
+		data_sink_streambuf sb_;
 	};
 
 	using ContentProvider = std::function<bool(size_t offset, size_t length, DataSink& sink)>;
 	using ChunkedContentProvider = std::function<bool(size_t offset, DataSink& sink)>;
-	using ContentReceiver = std::function<bool(std::string_view s)>;
+	using ContentReceiver = std::function<bool(const char* data, size_t data_length)>;
 	using MultipartContentHeader = std::function<bool(const MultipartFormData& file)>;
 
 	struct ChunkedContentCounters
@@ -237,9 +233,8 @@ namespace httplib
 		CPPHTTPLIBEXPORT bool operator()(MultipartContentHeader header, ContentReceiver receiver) const;
 		CPPHTTPLIBEXPORT bool operator()(ContentReceiver receiver) const;
 
-	private:
-		Reader m_Reader;
-		MultipartReader m_MultipartReader;
+		Reader reader_;
+		MultipartReader multipart_reader_;
 	};
 
 	using Range = std::pair<ssize_t, ssize_t>;
@@ -252,14 +247,18 @@ namespace httplib
 		Headers headers;
 		std::string body;
 
-		CPPHTTPLIBEXPORT bool has_header(std::string_view key) const;
-		CPPHTTPLIBEXPORT std::string get_header_value(std::string_view key, size_t id = 0) const;
-		CPPHTTPLIBEXPORT size_t get_header_value_count(std::string_view key) const;
+		CPPHTTPLIBEXPORT bool has_header(const char* key) const;
+		CPPHTTPLIBEXPORT std::string get_header_value(const char* key, size_t id = 0) const;
+		CPPHTTPLIBEXPORT size_t get_header_value_count(const char* key) const;
+		CPPHTTPLIBEXPORT void set_header(const char* key, const char* val);
+		CPPHTTPLIBEXPORT void set_header(const char* key, const std::string& val);
 
-		CPPHTTPLIBEXPORT void set_header(std::string key, std::string val);
-		CPPHTTPLIBEXPORT void set_redirect(std::string url, int status = 302);
-		CPPHTTPLIBEXPORT void set_content(std::string s, std::string content_type);
+		CPPHTTPLIBEXPORT void set_redirect(const char* url, int status = 302);
+		CPPHTTPLIBEXPORT void set_content(const char* s, size_t n, const char* content_type);
+		CPPHTTPLIBEXPORT void set_content(std::string s, const char* content_type);
+
 		CPPHTTPLIBEXPORT void set_content_provider(size_t length, ContentProvider provider, std::function<void()> resource_releaser = [] {});
+
 		CPPHTTPLIBEXPORT void set_chunked_content_provider(ChunkedContentProvider provider, std::function<void()> resource_releaser = [] {});
 
 		Response() = default;
@@ -269,13 +268,10 @@ namespace httplib
 		Response& operator=(Response&&) = default;
 		CPPHTTPLIBEXPORT ~Response();
 
-		inline size_t GetContentLength() const { return m_ContentLength; }
-		inline const ContentProvider& GetContentProvider() const { return m_ContentProvider; }
-
-	private:
-		size_t m_ContentLength = 0;
-		ContentProvider m_ContentProvider;
-		std::function<void()> m_ContentProviderResourceReleaser;
+		// private members...
+		size_t content_length_ = 0;
+		ContentProvider content_provider_;
+		std::function<void()> content_provider_resource_releaser_;
 	};
 
 	using ResponseHandler = std::function<bool(const Response& response)>;
@@ -302,19 +298,23 @@ namespace httplib
 		const SSL* ssl = nullptr;
 #endif
 
-		CPPHTTPLIBEXPORT bool has_header(std::string_view key) const;
-		CPPHTTPLIBEXPORT std::string get_header_value(std::string_view key, size_t id = 0) const;
-		CPPHTTPLIBEXPORT size_t get_header_value_count(std::string_view key) const;
-		CPPHTTPLIBEXPORT void set_header(std::string key, std::string val);
+		CPPHTTPLIBEXPORT bool has_header(const char *key) const;
+		CPPHTTPLIBEXPORT std::string get_header_value(const char* key, size_t id = 0) const;
+		CPPHTTPLIBEXPORT size_t get_header_value_count(const char* key) const;
+		CPPHTTPLIBEXPORT void set_header(const char* key, const char* val);
+		CPPHTTPLIBEXPORT void set_header(const char* key, const std::string& val);
 
-		CPPHTTPLIBEXPORT bool has_param(std::string_view key) const;
-		CPPHTTPLIBEXPORT std::string get_param_value(std::string_view key, size_t id = 0) const;
-		CPPHTTPLIBEXPORT size_t get_param_value_count(std::string_view key) const;
+		CPPHTTPLIBEXPORT bool has_param(const char* key) const;
+		CPPHTTPLIBEXPORT std::string get_param_value(const char* key, size_t id = 0) const;
+		CPPHTTPLIBEXPORT size_t get_param_value_count(const char* key) const;
 
 		CPPHTTPLIBEXPORT bool is_multipart_form_data() const;
 
-		CPPHTTPLIBEXPORT bool has_file(std::string_view key) const;
-		CPPHTTPLIBEXPORT MultipartFormData get_file_value(std::string_view key) const;
+		CPPHTTPLIBEXPORT bool has_file(const char* key) const;
+		CPPHTTPLIBEXPORT MultipartFormData get_file_value(const char* key) const;
+
+		// private members...
+		size_t authorization_count_ = 0;
 	};
 
 	class Stream
@@ -326,8 +326,11 @@ namespace httplib
 		virtual bool is_writable() const = 0;
 
 		virtual ssize_t read(char* ptr, size_t size) = 0;
-		virtual ssize_t write(std::string_view s) = 0;
+		virtual ssize_t write(const char* ptr, size_t size) = 0;
 		virtual void get_remote_ip_and_port(std::string& ip, int& port) const = 0;
+
+		CPPHTTPLIBEXPORT ssize_t write(const char* ptr);
+		CPPHTTPLIBEXPORT ssize_t write(const std::string& s);
 
 		template <typename... Args>
 		ssize_t write_format(const char* fmt, const Args &... args)
@@ -357,10 +360,10 @@ namespace httplib
 					n = static_cast<size_t>(snprintf(&glowable_buf[0], glowable_buf.size() - 1, fmt, args...));
 #endif
 				}
-				return write(std::string_view(&glowable_buf[0], n));
+				return write(&glowable_buf[0], n);
 			}
 			else
-				return write(std::string_view(buf.data(), n));
+				return write(buf.data(), n);
 		}
 	};
 
