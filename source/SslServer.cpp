@@ -236,11 +236,11 @@ namespace httplib
 			return -1;
 		}
 
-		ssize_t SSLSocketStream::write(const char* ptr, size_t size)
+		ssize_t SSLSocketStream::write(std::string_view s)
 		{
 			if (is_writable())
 			{
-				return SSL_write(ssl_, ptr, static_cast<int>(size));
+				return SSL_write(ssl_, s.data(), static_cast<int>(s.size()));
 			}
 			return -1;
 		}

@@ -23,74 +23,73 @@ namespace httplib
 		}
 	}
 
-	DataSink::DataSink() : os(&sb_), sb_(*this)
+	DataSink::DataSink(std::function<void(std::string_view)> write, std::function<void()> done, std::function<bool()> is_writable) : 
+		os(&m_StreamBuf), m_StreamBuf(*this),
+		m_Write(write), m_Done(done), m_IsWritable(is_writable)
 	{
 	}
-	DataSink::data_sink_streambuf::data_sink_streambuf(DataSink& sink) : sink_(sink)
+
+	void DataSink::Write(std::string_view s) { m_Write(s); }
+	void DataSink::Done() { m_Done(); }
+	bool DataSink::IsWritable() { return m_IsWritable(); }
+
+	DataSink::data_sink_streambuf::data_sink_streambuf(DataSink& sink) : m_Sink(sink)
 	{
 	}
 	std::streamsize DataSink::data_sink_streambuf::xsputn(const char* s, std::streamsize n)
 	{
-		sink_.write(s, static_cast<size_t>(n));
+		m_Sink.Write(std::string_view(s, static_cast<size_t>(n)));
 		return n;
 	}
 
 
 	ContentReader::ContentReader(Reader reader, MultipartReader multipart_reader)
-		: reader_(reader), multipart_reader_(multipart_reader)
+		: m_Reader(reader), m_MultipartReader(multipart_reader)
 	{
 	}
 	bool ContentReader::operator()(MultipartContentHeader header, ContentReceiver receiver) const
 	{
-		return multipart_reader_(header, receiver);
+		return m_MultipartReader(header, receiver);
 	}
 	bool ContentReader::operator()(ContentReceiver receiver) const
 	{
-		return reader_(receiver);
+		return m_Reader(receiver);
 	}
 
 
 	// Request implementation
-	bool Request::has_header(const char* key) const
+	bool Request::has_header(std::string_view key) const
 	{
 		return detail::has_header(headers, key);
 	}
 
-	std::string Request::get_header_value(const char* key, size_t id) const
+	std::string Request::get_header_value(std::string_view key, size_t id) const
 	{
 		return detail::get_header_value(headers, key, id, "");
 	}
 
-	size_t Request::get_header_value_count(const char* key) const
+	size_t Request::get_header_value_count(std::string_view key) const
 	{
-		auto r = headers.equal_range(key);
+		auto r = headers.equal_range(key.data());
 		return static_cast<size_t>(std::distance(r.first, r.second));
 	}
 
-	void Request::set_header(const char* key, const char* val)
+	void Request::set_header(std::string key, std::string val)
 	{
 		if (!detail::has_crlf(key) && !detail::has_crlf(val))
 		{
-			headers.emplace(key, val);
+			headers.emplace(std::move(key), std::move(val));
 		}
 	}
 
-	void Request::set_header(const char* key, const std::string& val)
+	bool Request::has_param(std::string_view key) const
 	{
-		if (!detail::has_crlf(key) && !detail::has_crlf(val.c_str()))
-		{
-			headers.emplace(key, val);
-		}
+		return params.find(key.data()) != params.end();
 	}
 
-	bool Request::has_param(const char* key) const
+	std::string Request::get_param_value(std::string_view key, size_t id) const
 	{
-		return params.find(key) != params.end();
-	}
-
-	std::string Request::get_param_value(const char* key, size_t id) const
-	{
-		auto it = params.find(key);
+		auto it = params.find(key.data());
 		std::advance(it, static_cast<ssize_t>(id));
 		if (it != params.end())
 		{
@@ -99,9 +98,9 @@ namespace httplib
 		return std::string();
 	}
 
-	size_t Request::get_param_value_count(const char* key) const
+	size_t Request::get_param_value_count(std::string_view key) const
 	{
-		auto r = params.equal_range(key);
+		auto r = params.equal_range(key.data());
 		return static_cast<size_t>(std::distance(r.first, r.second));
 	}
 
@@ -111,14 +110,14 @@ namespace httplib
 		return !content_type.find("multipart/form-data");
 	}
 
-	bool Request::has_file(const char* key) const
+	bool Request::has_file(std::string_view key) const
 	{
-		return files.find(key) != files.end();
+		return files.find(key.data()) != files.end();
 	}
 
-	MultipartFormData Request::get_file_value(const char* key) const
+	MultipartFormData Request::get_file_value(std::string_view key) const
 	{
-		auto it = files.find(key);
+		auto it = files.find(key.data());
 		if (it != files.end())
 		{
 			return it->second;
@@ -127,39 +126,31 @@ namespace httplib
 	}
 
 	// Response implementation
-	bool Response::has_header(const char* key) const
+	bool Response::has_header(std::string_view key) const
 	{
-		return headers.find(key) != headers.end();
+		return headers.find(key.data()) != headers.end();
 	}
 
-	std::string Response::get_header_value(const char* key, size_t id) const
+	std::string Response::get_header_value(std::string_view key, size_t id) const
 	{
 		return detail::get_header_value(headers, key, id, "");
 	}
 
-	size_t Response::get_header_value_count(const char* key) const
+	size_t Response::get_header_value_count(std::string_view key) const
 	{
-		auto r = headers.equal_range(key);
+		auto r = headers.equal_range(key.data());
 		return static_cast<size_t>(std::distance(r.first, r.second));
 	}
 
-	void Response::set_header(const char* key, const char* val)
+	void Response::set_header(std::string key, std::string val)
 	{
 		if (!detail::has_crlf(key) && !detail::has_crlf(val))
 		{
-			headers.emplace(key, val);
+			headers.emplace(std::move(key), std::move(val));
 		}
 	}
 
-	void Response::set_header(const char* key, const std::string& val)
-	{
-		if (!detail::has_crlf(key) && !detail::has_crlf(val.c_str()))
-		{
-			headers.emplace(key, val);
-		}
-	}
-
-	void Response::set_redirect(const char* url, int stat)
+	void Response::set_redirect(std::string url, int stat)
 	{
 		if (!detail::has_crlf(url))
 		{
@@ -175,55 +166,44 @@ namespace httplib
 		}
 	}
 
-	void Response::set_content(const char* s, size_t n, const char* content_type)
-	{
-		body.assign(s, n);
-		set_header("Content-Type", content_type);
-	}
-
-	void Response::set_content(std::string s, const char* content_type)
+	void Response::set_content(std::string s, std::string content_type)
 	{
 		body = std::move(s);
-		set_header("Content-Type", content_type);
+		set_header("Content-Type", std::move(content_type));
 	}
 
 	void Response::set_content_provider(size_t in_length, ContentProvider provider, std::function<void()> resource_releaser)
 	{
+		if (m_ContentProviderResourceReleaser)
+			m_ContentProviderResourceReleaser();
+
 		assert(in_length > 0);
-		content_length_ = in_length;
-		content_provider_ = [provider](size_t offset, size_t length, DataSink& sink)
+		m_ContentLength = in_length;
+		m_ContentProvider = [provider](size_t offset, size_t length, DataSink& sink)
 		{
 			return provider(offset, length, sink);
 		};
-		content_provider_resource_releaser_ = resource_releaser;
+		m_ContentProviderResourceReleaser = resource_releaser;
 	}
 
 	void Response::set_chunked_content_provider(ChunkedContentProvider provider, std::function<void()> resource_releaser)
 	{
-		content_length_ = 0;
-		content_provider_ = [provider](size_t offset, size_t, DataSink& sink)
+		if (m_ContentProviderResourceReleaser)
+			m_ContentProviderResourceReleaser();
+
+		m_ContentLength = 0;
+		m_ContentProvider = [provider](size_t offset, size_t, DataSink& sink)
 		{
 			return provider(offset, sink);
 		};
-		content_provider_resource_releaser_ = resource_releaser;
+		m_ContentProviderResourceReleaser = resource_releaser;
 	}
 
 	Response::~Response()
 	{
-		if (content_provider_resource_releaser_)
-			content_provider_resource_releaser_();
+		if (m_ContentProviderResourceReleaser)
+			m_ContentProviderResourceReleaser();
 	}
-
-	ssize_t Stream::write(const char* ptr)
-	{
-		return write(ptr, strlen(ptr));
-	}
-
-	ssize_t Stream::write(const std::string& s)
-	{
-		return write(s.data(), s.size());
-	}
-
 
 	ThreadPool::ThreadPool(size_t n)
 	{

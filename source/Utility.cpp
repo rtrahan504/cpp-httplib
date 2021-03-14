@@ -151,19 +151,19 @@ namespace httplib
 			return out;
 		}
 
-		bool is_file(const std::string& path)
+		bool is_file(std::string_view path)
 		{
 			struct stat st;
-			return stat(path.c_str(), &st) >= 0 && S_ISREG(st.st_mode);
+			return stat(path.data(), &st) >= 0 && S_ISREG(st.st_mode);
 		}
 
-		bool is_dir(const std::string& path)
+		bool is_dir(std::string_view path)
 		{
 			struct stat st;
-			return stat(path.c_str(), &st) >= 0 && S_ISDIR(st.st_mode);
+			return stat(path.data(), &st) >= 0 && S_ISDIR(st.st_mode);
 		}
 
-		bool is_valid_path(const std::string& path)
+		bool is_valid_path(std::string_view path)
 		{
 			size_t level = 0;
 			size_t i = 0;
@@ -213,9 +213,9 @@ namespace httplib
 			return true;
 		}
 
-		void read_file(const std::string& path, std::string& out)
+		void read_file(std::string_view path, std::string& out)
 		{
-			std::ifstream fs(path, std::ios_base::binary);
+			std::ifstream fs(path.data(), std::ios_base::binary);
 			fs.seekg(0, std::ios_base::end);
 			auto size = fs.tellg();
 			fs.seekg(0);
@@ -791,25 +791,25 @@ namespace httplib
 		}
 #endif
 
-		bool has_header(const Headers& headers, const char* key)
+		bool has_header(const Headers& headers, std::string_view key)
 		{
-			return headers.find(key) != headers.end();
+			return headers.find(key.data()) != headers.end();
 		}
 
-		const char* get_header_value(const Headers& headers, const char* key, size_t id, const char* def)
+		const char* get_header_value(const Headers& headers, std::string_view key, size_t id, std::string_view def)
 		{
-			auto it = headers.find(key);
+			auto it = headers.find(key.data());
 			std::advance(it, static_cast<int>(id));
 			if (it != headers.end())
 			{
 				return it->second.c_str();
 			}
-			return def;
+			return def.data();
 		}
 
-		uint64_t get_header_value_uint64(const Headers& headers, const char* key, uint64_t def)
+		uint64_t get_header_value_uint64(const Headers& headers, std::string_view key, uint64_t def)
 		{
-			auto it = headers.find(key);
+			auto it = headers.find(key.data());
 			if (it != headers.end())
 			{
 				return std::strtoull(it->second.data(), nullptr, 10);
@@ -900,7 +900,7 @@ namespace httplib
 					return false;
 				}
 
-				if (!out(buf, static_cast<size_t>(n)))
+				if (!out(std::string_view(buf, static_cast<size_t>(n))))
 				{
 					return false;
 				}
@@ -949,7 +949,7 @@ namespace httplib
 				{
 					return true;
 				}
-				if (!out(buf, static_cast<size_t>(n)))
+				if (!out(std::string_view(buf, static_cast<size_t>(n))))
 				{
 					return false;
 				}
@@ -1028,12 +1028,12 @@ namespace httplib
 				"chunked");
 		}
 
-		bool write_data(Stream& strm, const char* d, size_t l)
+		bool write_data(Stream& strm, std::string_view s)
 		{
 			size_t offset = 0;
-			while (offset < l)
+			while (offset < s.size())
 			{
-				auto length = strm.write(d + offset, l - offset);
+				auto length = strm.write(std::string_view(s.data() + offset, s.size() - offset));
 				if (length < 0)
 				{
 					return false;
@@ -1050,22 +1050,23 @@ namespace httplib
 
 			auto ok = true;
 
-			DataSink data_sink;
-			data_sink.write = [&](const char* d, size_t l)
-			{
-				if (ok)
+			DataSink data_sink(
+				[&](std::string_view s)
 				{
-					offset += l;
-					if (!write_data(strm, d, l))
+					if (ok)
 					{
-						ok = false;
+						offset += s.size();
+						if (!write_data(strm, s))
+						{
+							ok = false;
+						}
 					}
-				}
-			};
-			data_sink.is_writable = [&](void)
-			{
-				return ok && strm.is_writable();
-			};
+				},
+				[&]() {},
+					[&](void)
+				{
+					return ok && strm.is_writable();
+				});
 
 			while (ok && offset < end_offset)
 			{
@@ -1087,38 +1088,42 @@ namespace httplib
 		{
 			if (counters.data_available)
 			{
-				DataSink data_sink;
-				data_sink.write = [&](const char* d, size_t l)
-				{
-					if (counters.ok)
+				DataSink data_sink(
+					[&](std::string_view s)
 					{
-						counters.data_available = l > 0;
-						counters.offset += l;
+						if (counters.ok)
+						{
+							counters.data_available = s.size() > 0;
+							counters.offset += s.size();
 
-						// Emit chunked response header and footer for each chunk
-						auto chunk = from_i_to_hex(l) + "\r\n" + std::string(d, l) + "\r\n";
-						if (write_data(strm, chunk.data(), chunk.size()))
-							counters.total_written_length += chunk.size();
-						else
-							counters.ok = false;
-					}
-				};
-				data_sink.done = [&](void)
-				{
-					counters.data_available = false;
-					if (counters.ok)
+							// Emit chunked response header and footer for each chunk
+							std::string chunk;
+							chunk.reserve(s.size() + 10);
+							chunk = from_i_to_hex(s.size()) + "\r\n";
+							chunk += s;
+							chunk += "\r\n";
+							if (write_data(strm, chunk))
+								counters.total_written_length += chunk.size();
+							else
+								counters.ok = false;
+						}
+					},
+					[&]()
 					{
-						static const std::string done_marker("0\r\n\r\n");
-						if (write_data(strm, done_marker.data(), done_marker.size()))
-							counters.total_written_length += done_marker.size();
-						else
-							counters.ok = false;
-					}
-				};
-				data_sink.is_writable = [&](void)
-				{
-					return counters.ok && strm.is_writable();
-				};
+						counters.data_available = false;
+						if (counters.ok)
+						{
+							static std::string_view done_marker("0\r\n\r\n");
+							if (write_data(strm, done_marker))
+								counters.total_written_length += done_marker.size();
+							else
+								counters.ok = false;
+						}
+					},
+						[&]()
+					{
+						return counters.ok && strm.is_writable();
+					});
 
 				if (!content_provider(counters.offset, 0, data_sink) || !counters.ok)
 					return false;
@@ -1453,7 +1458,7 @@ namespace httplib
 				},
 					[&](size_t offset, size_t length)
 				{
-					return write_content(strm, res.content_provider_, offset, length) >= 0;
+					return write_content(strm, res.GetContentProvider(), offset, length) >= 0;
 				});
 		}
 
@@ -1463,7 +1468,7 @@ namespace httplib
 
 			if (r.second == -1)
 			{
-				r.second = static_cast<ssize_t>(res.content_length_) - 1;
+				r.second = static_cast<ssize_t>(res.GetContentLength()) - 1;
 			}
 
 			return std::make_pair(r.first, r.second - r.first + 1);
@@ -1481,16 +1486,12 @@ namespace httplib
 			return false;
 		}
 
-		bool has_crlf(const char* s)
+		bool has_crlf(std::string_view s)
 		{
-			auto p = s;
-			while (*p)
+			for(auto& c : s)
 			{
-				if (*p == '\r' || *p == '\n')
-				{
+				if (c == '\r' || c == '\n')
 					return true;
-				}
-				p++;
 			}
 			return false;
 		}
@@ -1721,7 +1722,7 @@ namespace httplib
 #endif
 		}
 
-		ssize_t SocketStream::write(const char* ptr, size_t size)
+		ssize_t SocketStream::write(std::string_view s)
 		{
 			if (!is_writable())
 			{
@@ -1729,11 +1730,11 @@ namespace httplib
 			}
 
 #ifdef _WIN32
-			if (size > static_cast<size_t>((std::numeric_limits<int>::max)()))
+			if (s.size() > static_cast<size_t>((std::numeric_limits<int>::max)()))
 			{
 				return -1;
 			}
-			return send(sock_, ptr, static_cast<int>(size), 0);
+			return send(sock_, s.data(), static_cast<int>(s.size()), 0);
 #else
 			return handle_EINTR([&]()
 				{
@@ -1769,10 +1770,10 @@ namespace httplib
 			return static_cast<ssize_t>(len_read);
 		}
 
-		ssize_t BufferStream::write(const char* ptr, size_t size)
+		ssize_t BufferStream::write(std::string_view s)
 		{
-			buffer.append(ptr, size);
-			return static_cast<ssize_t>(size);
+			buffer.append(s.data(), s.size());
+			return static_cast<ssize_t>(s.size());
 		}
 
 		void BufferStream::get_remote_ip_and_port(std::string& /*ip*/, int& /*port*/) const
