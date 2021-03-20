@@ -751,7 +751,7 @@ namespace httplib
 		return false;
 	}
 
-	bool Server::process_request(Stream& strm, Request& req, Response& res, std::shared_ptr<Connection> connection, bool last_connection, bool& connection_close, const std::function<void(Request&)>& setup_request)
+	bool Server::process_request(Stream& strm, Request& req, Response& res, std::shared_ptr<Connection> connection, bool& connection_close, const std::function<void(Request&)>& setup_request)
 	{
 		std::array<char, 2048> buf{};
 
@@ -786,8 +786,7 @@ namespace httplib
 			connection_close = true;
 		}
 
-		if (req.version == "HTTP/1.0" &&
-			req.get_header_value("Connection") != "Keep-Alive")
+		if (req.version == "HTTP/1.0" && req.get_header_value("Connection") != "Keep-Alive")
 		{
 			connection_close = true;
 		}
@@ -949,7 +948,7 @@ namespace httplib
 			m_Response = Response();
 
 			if (m_ProcessCount > 0)
-				m_NextStep = NextStep::ProcessRequest;
+				m_NextStep = NextStep::AcceptRequest;
 			else
 				m_NextStep = NextStep::Quit;
 		}
@@ -972,14 +971,17 @@ namespace httplib
 			m_Stream = CreateStream();
 
 		bool connection_close = false;
-		if (!m_Server.process_request(*m_Stream, m_Request, m_Response, self, m_ProcessCount == 0, connection_close, m_SetupRequest) || connection_close)
+		if (!m_Server.process_request(*m_Stream, m_Request, m_Response, self, connection_close, m_SetupRequest))
 			return NextStep::Error;
+
+		if (connection_close)
+			m_ProcessCount = 0;
 
 		return NextStep::SendResponseHeader;
 	}
 	Server::Connection::NextStep Server::Connection::p_SendResponseHeader(std::shared_ptr<Connection> self)
 	{
-		if (!m_Server.write_response(*m_Stream, m_ProcessCount == 0, m_Request, m_Response, self, m_Boundary, m_ContentType))
+		if (!m_Server.write_response(*m_Stream, m_ProcessCount <= 0, m_Request, m_Response, self, m_Boundary, m_ContentType))
 			return Server::Connection::NextStep::Error;
 
 		return Server::Connection::NextStep::SendResponseBody;

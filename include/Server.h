@@ -79,7 +79,7 @@ namespace httplib
 			NextStep p_SendResponseBody();
 			NextStep p_SendResponseBodyWithProvider(std::shared_ptr<Connection> self);
 
-			NextStep m_NextStep = NextStep::ProcessRequest;
+			NextStep m_NextStep = NextStep::AcceptRequest;
 
 			Server& m_Server;
 			std::unique_ptr<Stream> m_Stream;
@@ -146,7 +146,7 @@ namespace httplib
 		virtual std::unique_ptr<TaskQueue> new_task_queue(std::unique_ptr<TaskQueue> queue = nullptr);
 
 	protected:
-		bool process_request(Stream& strm, Request& req, Response& res, std::shared_ptr<Connection> connection, bool last_connection, bool& connection_close, const std::function<void(Request&)>& setup_request);
+		bool process_request(Stream& strm, Request& req, Response& res, std::shared_ptr<Connection> connection, bool& connection_close, const std::function<void(Request&)>& setup_request);
 
 		Config m_Config;
 
