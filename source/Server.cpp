@@ -365,34 +365,34 @@ namespace httplib
 	bool Server::read_content(Stream& strm, Request& req, Response& res)
 	{
 		MultipartFormDataMap::iterator cur;
-		if (read_content_core(
-			strm, req, res,
-			// Regular
-			[&](std::string_view s)
-			{
-				if (req.body.size() + s.size() > req.body.max_size())
-				{
-					return false;
-				}
-				req.body.append(s);
-				return true;
-			},
-			// Multipart
-				[&](const MultipartFormData& file)
-			{
-				cur = req.files.emplace(file.name, file);
-				return true;
-			},
+		if (read_content_core(strm, req, res,
+				// Regular
 				[&](std::string_view s)
-			{
-				auto& content = cur->second.content;
-				if (content.size() + s.size() > content.max_size())
 				{
-					return false;
-				}
-				content.append(s);
-				return true;
-			}))
+					if (req.body.size() + s.size() > req.body.max_size())
+					{
+						return false;
+					}
+					req.body.append(s);
+					return true;
+				},
+				// Multipart
+					[&](const MultipartFormData& file)
+				{
+					cur = req.files.emplace(file.name, file);
+					return true;
+				},
+					[&](std::string_view s)
+				{
+					auto& content = cur->second.content;
+					if (content.size() + s.size() > content.max_size())
+					{
+						return false;
+					}
+					content.append(s);
+					return true;
+				})
+			)
 		{
 			const auto& content_type = req.get_header_value("Content-Type");
 			if (!content_type.find("application/x-www-form-urlencoded"))
@@ -401,6 +401,7 @@ namespace httplib
 			}
 			return true;
 		}
+		else
 			return false;
 	}
 
@@ -946,7 +947,7 @@ namespace httplib
 
 			m_Request = Request();
 			m_Response = Response();
-
+			
 			if (m_ProcessCount > 0)
 				m_NextStep = NextStep::AcceptRequest;
 			else
